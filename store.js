@@ -33,26 +33,7 @@ function parseCSVLine(line) {
 /* ── Image Discovery ── */
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'];
 
-// Cached manifest promise — fetched once, shared across all findImages() calls
-let _manifestPromise = null;
-
-async function loadManifest() {
-  if (_manifestPromise) return _manifestPromise;
-  _manifestPromise = fetch('images.json')
-    .then(r => r.ok ? r.json() : null)
-    .catch(() => null);
-  return _manifestPromise;
-}
-
 async function findImages(folder) {
-  // Fast path: use manifest if available
-  const manifest = await loadManifest();
-  if (manifest && manifest[folder]) {
-    return manifest[folder].map(f => `products/${folder}/${f}`);
-  }
-
-  // Slow fallback: probe via HEAD requests (used when images.json doesn't exist)
-  console.warn(`images.json missing or has no entry for "${folder}" — falling back to HEAD probing. Run generate-images-json to fix.`);
   const images = [];
   for (let i = 1; i <= 20; i++) {
     let found = false;
@@ -65,6 +46,7 @@ async function findImages(folder) {
     }
     if (!found) break;
   }
+  // If no numbered images found, try common names
   if (images.length === 0) {
     for (const name of ['photo', 'image', 'pic', 'main', 'cover', 'front']) {
       for (const ext of IMAGE_EXTENSIONS) {
