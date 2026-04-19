@@ -30,35 +30,25 @@ function parseCSVLine(line) {
   return result;
 }
 
-/* ── Image Discovery ── */
-const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'];
+/* ── Image Manifest ── */
+let imageManifest = null;
 
-async function findImages(folder) {
-  const images = [];
-  for (let i = 1; i <= 20; i++) {
-    let found = false;
-    for (const ext of IMAGE_EXTENSIONS) {
-      const path = `products/${folder}/${i}.${ext}`;
-      try {
-        const resp = await fetch(path, { method: 'HEAD' });
-        if (resp.ok) { images.push(path); found = true; break; }
-      } catch (e) { /* skip */ }
+async function loadImageManifest() {
+  if (imageManifest) return imageManifest;
+  try {
+    const resp = await fetch('images.json');
+    if (resp.ok) {
+      imageManifest = await resp.json();
+      return imageManifest;
     }
-    if (!found) break;
-  }
-  // If no numbered images found, try common names
-  if (images.length === 0) {
-    for (const name of ['photo', 'image', 'pic', 'main', 'cover', 'front']) {
-      for (const ext of IMAGE_EXTENSIONS) {
-        const path = `products/${folder}/${name}.${ext}`;
-        try {
-          const resp = await fetch(path, { method: 'HEAD' });
-          if (resp.ok) { images.push(path); }
-        } catch (e) { /* skip */ }
-      }
-    }
-  }
-  return images;
+  } catch (e) { /* fall through */ }
+  imageManifest = {};
+  return imageManifest;
+}
+
+function getImages(folder) {
+  const files = imageManifest[folder] || [];
+  return files.map(f => `products/${folder}/${f}`);
 }
 
 /* ── Product Grid (index.html) ── */
@@ -72,16 +62,19 @@ async function initGrid() {
 
   let products;
   try {
-    const resp = await fetch('products.csv');
-    products = parseCSV(await resp.text());
+    const [csvResp] = await Promise.all([
+      fetch('products.csv'),
+      loadImageManifest()
+    ]);
+    products = parseCSV(await csvResp.text());
   } catch (e) {
     loading.textContent = 'Could not load products.csv';
     return;
   }
 
-  // Load first image for each product
+  // Attach images from manifest (instant, no network requests)
   for (const p of products) {
-    p._images = await findImages(p.Folder);
+    p._images = getImages(p.Folder);
   }
 
   loading.style.display = 'none';
@@ -104,7 +97,7 @@ async function initGrid() {
       card.className = 'product-card';
       card.innerHTML = `
         ${p._images.length > 0
-          ? `<img class="card-image" src="${p._images[0]}" alt="${esc(p.Name)}">`
+          ? `<img class="card-image" src="${p._images[0]}" alt="${esc(p.Name)}" loading="lazy">`
           : `<div class="card-image-placeholder">No image</div>`}
         <div class="card-body">
           <h3>${esc(p.Name)}</h3>
@@ -142,8 +135,11 @@ async function initDetail() {
 
   let products;
   try {
-    const resp = await fetch('products.csv');
-    products = parseCSV(await resp.text());
+    const [csvResp] = await Promise.all([
+      fetch('products.csv'),
+      loadImageManifest()
+    ]);
+    products = parseCSV(await csvResp.text());
   } catch (e) {
     loading.textContent = 'Could not load products.csv';
     return;
@@ -152,7 +148,7 @@ async function initDetail() {
   const product = products.find(p => p.Folder === folder);
   if (!product) { loading.textContent = 'Product not found.'; return; }
 
-  const images = await findImages(folder);
+  const images = getImages(folder);
 
   document.title = `${product.Name} — Philip's Store`;
   document.getElementById('product-name').textContent = product.Name;
