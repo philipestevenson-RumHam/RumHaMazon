@@ -102,8 +102,8 @@ async function initGrid() {
         <div class="card-body">
           <h3>${esc(p.Name)}</h3>
           <div class="price-row">
-            <span class="my-price">$${esc(p.MyPrice)}</span>
-            <span class="amazon-price">$${esc(p.AmazonPrice)}</span>
+            <span class="my-price">£${esc(p.MyPrice)}</span>
+            <span class="amazon-price">£${esc(p.AmazonPrice)}</span>
             ${savings > 0 ? `<span class="discount-badge">${pct}% off</span>` : ''}
           </div>
           <span class="view-btn">View Details</span>
@@ -152,15 +152,15 @@ async function initDetail() {
 
   document.title = `${product.Name} — Philip's Store`;
   document.getElementById('product-name').textContent = product.Name;
-  document.getElementById('my-price').textContent = `$${product.MyPrice}`;
-  document.getElementById('amazon-price').textContent = `Amazon: $${product.AmazonPrice}`;
+  document.getElementById('my-price').textContent = `£${product.MyPrice}`;
+  document.getElementById('amazon-price').textContent = `Amazon: £${product.AmazonPrice}`;
   document.getElementById('product-details').textContent = product.Details;
 
   const savings = parseFloat(product.AmazonPrice) - parseFloat(product.MyPrice);
   const pct = Math.round((savings / parseFloat(product.AmazonPrice)) * 100);
   const badge = document.getElementById('discount-badge');
   if (savings > 0) {
-    badge.textContent = `Save $${savings.toFixed(2)} (${pct}% off Amazon)`;
+    badge.textContent = `Save £${savings.toFixed(2)} (${pct}% off Amazon)`;
   } else {
     badge.style.display = 'none';
   }
