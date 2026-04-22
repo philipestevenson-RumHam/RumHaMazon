@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Amazon Product Extractor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f0f4f8;
+  color: #1e293b;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 60px 20px;
+}
+.wrap { max-width: 600px; width: 100%; }
+h1 { font-size: 28px; margin-bottom: 8px; }
+.sub { color: #64748b; font-size: 15px; margin-bottom: 40px; }
+
+.drag-box {
+  background: #fff;
+  border: 3px dashed #6366f1;
+  border-radius: 20px;
+  padding: 50px 30px;
+  text-align: center;
+  margin-bottom: 40px;
+}
+.drag-box p {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: #334155;
+}
+.drag-box .arrow {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 16px;
+  animation: bob 1.2s ease-in-out infinite;
+}
+@keyframes bob {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+#bookmarklet-link {
+  display: inline-block;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+  padding: 20px 50px;
+  border-radius: 14px;
+  text-decoration: none;
+  cursor: grab;
+  box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+  transition: transform .15s;
+}
+#bookmarklet-link:hover { transform: scale(1.06); }
+#bookmarklet-link:active { cursor: grabbing; }
+
+.hint { display: block; margin-top: 18px; font-size: 13px; color: #94a3b8; }
+
+h2 { font-size: 18px; margin-bottom: 14px; }
+ol.steps { list-style: none; counter-reset: s; margin-bottom: 30px; }
+ol.steps li {
+  counter-increment: s;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 16px 16px 58px;
+  margin-bottom: 10px;
+  position: relative;
+  font-size: 15px;
+  line-height: 1.6;
+}
+ol.steps li::before {
+  content: counter(s);
+  position: absolute; left: 16px; top: 16px;
+  width: 30px; height: 30px;
+  background: #6366f1; color: #fff;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px;
+}
+
+.note {
+  background: #fef3c7; border-left: 4px solid #f59e0b;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px; font-size: 13px; color: #78350f; line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>📦 Amazon Product Extractor</h1>
+<p class="sub">One-click extraction of title, description &amp; all product images</p>
+
+<div class="drag-box">
+  <span class="arrow">👇</span>
+  <p>Drag this button to your bookmarks bar</p>
+  <a id="bookmarklet-link" href="#">📦 Extract Product</a>
+  <span class="hint">Click and hold the purple button, then drag it up to your bookmarks bar</span>
+</div>
+
+<h2>How to use</h2>
+<ol class="steps">
+  <li><strong>Show your bookmarks bar</strong> — press <strong>Ctrl+Shift+B</strong> (or Cmd+Shift+B on Mac)</li>
+  <li><strong>Drag the purple button</strong> up onto your bookmarks bar</li>
+  <li><strong>Go to any Amazon product page</strong> (works on all Amazon domains)</li>
+  <li><strong>Click the bookmark</strong> — an overlay appears with title, description and images, plus a Download Pack button</li>
+</ol>
+
+<div class="note">
+  <strong>💡 Tip:</strong> The Download Pack button creates a ZIP file containing all product images (1.jpg, 2.jpg, …) and a CSV with the title and description. It requires a brief internet connection to load the zip library the first time.
+</div>
+
+</div>
+
+<script>
+var code = function(){
+
+  /* ---- EXTRACT TITLE ---- */
+  var title = '';
+  var el = document.getElementById('productTitle');
+  if (el) title = el.innerText.trim();
+
+  /* ---- EXTRACT DESCRIPTION ---- */
+  var desc = '';
+  var fb = document.getElementById('feature-bullets');
+  if (fb) {
+    var items = fb.querySelectorAll('li .a-list-item');
+    var pts = [];
+    for (var i = 0; i < items.length; i++) {
+      var tx = items[i].innerText.trim();
+      if (tx && tx.length > 2) pts.push(tx);
+    }
+    desc = pts.join('\n');
+  }
+  if (!desc) {
+    var pd = document.getElementById('productDescription');
+    if (pd) desc = pd.innerText.trim();
+  }
+
+  /* ---- EXTRACT IMAGES ---- */
+  var imgs = [];
+  var seen = {};
+
+  function extractArray(text, startIdx) {
+    if (text.charAt(startIdx) !== '[') return null;
+    var depth = 0;
+    for (var i = startIdx; i < text.length && i < startIdx + 50000; i++) {
+      if (text.charAt(i) === '[') depth++;
+      else if (text.charAt(i) === ']') { depth--; if (depth === 0) return text.substring(startIdx, i + 1); }
+    }
+    return null;
+  }
+
+  /* Method 1: colorImages.initial */
+  var scripts = document.querySelectorAll('script:not([src])');
+  for (var i = 0; i < scripts.length; i++) {
+    var txt = scripts[i].textContent || '';
+    var ciIdx = txt.indexOf('colorImages');
+    if (ciIdx === -1) continue;
+    var iniIdx = txt.indexOf('initial', ciIdx);
+    if (iniIdx === -1 || iniIdx > ciIdx + 200) continue;
+    var bracketIdx = txt.indexOf('[', iniIdx);
+    if (bracketIdx === -1 || bracketIdx > iniIdx + 50) continue;
+    var arrStr = extractArray(txt, bracketIdx);
+    if (!arrStr) continue;
+    try {
+      var arr = JSON.parse(arrStr);
+      for (var j = 0; j < arr.length; j++) {
+        var u = arr[j].hiRes || arr[j].large;
+        if (u && !seen[u]) { seen[u] = 1; imgs.push(u); }
+      }
+    } catch(e){}
+    if (imgs.length > 0) break;
+  }
+
+  /* Method 2: ImageBlockATF */
+  if (imgs.length === 0) {
+    for (var i = 0; i < scripts.length; i++) {
+      var txt = scripts[i].textContent || '';
+      var ibIdx = txt.indexOf('ImageBlockATF');
+      if (ibIdx === -1) continue;
+      var ciIdx2 = txt.indexOf('colorImages', ibIdx);
+      if (ciIdx2 > -1 && ciIdx2 < ibIdx + 5000) {
+        var iniIdx2 = txt.indexOf('initial', ciIdx2);
+        if (iniIdx2 > -1 && iniIdx2 < ciIdx2 + 200) {
+          var bIdx2 = txt.indexOf('[', iniIdx2);
+          if (bIdx2 > -1 && bIdx2 < iniIdx2 + 50) {
+            var arrStr2 = extractArray(txt, bIdx2);
+            if (arrStr2) {
+              try {
+                var arr2 = JSON.parse(arrStr2);
+                for (var j = 0; j < arr2.length; j++) {
+                  var u2 = arr2[j].hiRes || arr2[j].large;
+                  if (u2 && !seen[u2]) { seen[u2] = 1; imgs.push(u2); }
+                }
+              } catch(e){}
+            }
+          }
+        }
+      }
+      if (imgs.length > 0) break;
+    }
+  }
+
+  /* Method 3: thumbnail strip */
+  if (imgs.length === 0) {
+    var thumbs = document.querySelectorAll('#altImages .imageThumbnail img, #altImages .a-button-thumbnail img');
+    for (var i = 0; i < thumbs.length; i++) {
+      var s = thumbs[i].src || '';
+      if (s.indexOf('images/I/') > -1) {
+        var big = s.replace(/\._[A-Za-z0-9_,]+_\./, '._AC_SL1500_.');
+        if (!seen[big]) { seen[big] = 1; imgs.push(big); }
+      }
+    }
+  }
+
+  /* Method 4: landingImage fallback */
+  if (imgs.length === 0) {
+    var mainImg = document.getElementById('landingImage') || document.getElementById('imgBlkFront');
+    if (mainImg) {
+      var dyn = mainImg.getAttribute('data-a-dynamic-image');
+      if (dyn) {
+        try {
+          var obj = JSON.parse(dyn);
+          var bestUrl = ''; var bestW = 0;
+          for (var u in obj) { if (obj[u][0] > bestW) { bestW = obj[u][0]; bestUrl = u; } }
+          if (bestUrl) imgs.push(bestUrl);
+        } catch(e){}
+      } else if (mainImg.src) {
+        imgs.push(mainImg.src);
+      }
+    }
+  }
+
+  if (!title && imgs.length === 0) {
+    alert('No product data found. Make sure you are on an Amazon product page.');
+    return;
+  }
+
+  /* ---- DOWNLOAD PACK ---- */
+  window.__amzDlPack = function() {
+    var btn = document.getElementById('dlPackBtn');
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+
+    function doZip() {
+      var zip = new JSZip();
+
+      /* CSV — Title and Description only */
+      var csvTitle = title.replace(/"/g, '""');
+      var csvDesc = desc.replace(/"/g, '""');
+      var csv = '"Title","Description"\n"' + csvTitle + '","' + csvDesc + '"';
+      zip.file('product.csv', csv);
+
+      /* Images */
+      var total = imgs.length;
+      if (total === 0) {
+        zip.generateAsync({type:'blob'}).then(function(blob){
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'amazon-product-pack.zip';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          btn.textContent = '✅ Pack downloaded!';
+          btn.disabled = false;
+        });
+        return;
+      }
+
+      var done = 0;
+      function checkDone() {
+        done++;
+        btn.textContent = 'Packing ' + done + '/' + total + '…';
+        if (done === total) {
+          zip.generateAsync({type:'blob'}).then(function(blob){
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'amazon-product-pack.zip';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            btn.textContent = '✅ Pack downloaded!';
+            btn.disabled = false;
+          });
+        }
+      }
+
+      imgs.forEach(function(url, idx) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+          try {
+            var c = document.createElement('canvas');
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            c.getContext('2d').drawImage(img, 0, 0);
+            c.toBlob(function(blob) {
+              var reader = new FileReader();
+              reader.onload = function() {
+                var b64 = reader.result.split(',')[1];
+                zip.file((idx + 1) + '.jpg', b64, {base64: true});
+                checkDone();
+              };
+              reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.95);
+          } catch(e) { checkDone(); }
+        };
+        img.onerror = function() { checkDone(); };
+        img.src = url;
+      });
+    }
+
+    /* Load JSZip from CDN if not already present */
+    if (typeof JSZip !== 'undefined') {
+      doZip();
+    } else {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = doZip;
+      s.onerror = function() {
+        btn.textContent = '⬇ Download Pack';
+        btn.disabled = false;
+        alert('Could not load zip library. Please check your internet connection.');
+      };
+      document.head.appendChild(s);
+    }
+  };
+
+  /* ---- BUILD OVERLAY ---- */
+  var old = document.getElementById('amzExtOverlay');
+  if (old) old.remove();
+
+  var ov = document.createElement('div');
+  ov.id = 'amzExtOverlay';
+  ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.95);z-index:999999;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#e2e8f0';
+
+  var h = '<div style="max-width:850px;margin:0 auto;padding:30px 20px">';
+
+  /* Close button */
+  h += '<div style="text-align:right"><button onclick="document.getElementById(\'amzExtOverlay\').remove()" style="background:#ef4444;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">\u2715 Close</button></div>';
+
+  /* Title */
+  h += '<h1 style="font-size:22px;color:#fff;margin:20px 0 6px">Product Title</h1>';
+  h += '<div style="background:#1e293b;padding:16px;border-radius:10px;margin-bottom:20px;font-size:15px;line-height:1.5;word-break:break-word">' + (title || '<em>Not found</em>') + '</div>';
+
+  /* Description */
+  h += '<h2 style="font-size:18px;color:#fff;margin:20px 0 6px">Description</h2>';
+  var descHtml = desc ? desc.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>') : '<em>Not found</em>';
+  h += '<div style="background:#1e293b;padding:16px;border-radius:10px;margin-bottom:20px;font-size:14px;line-height:1.6">' + descHtml + '</div>';
+
+  /* Images */
+  h += '<h2 style="font-size:18px;color:#fff;margin:20px 0 10px">Product Images (' + imgs.length + ')</h2>';
+
+  if (imgs.length > 0) {
+    /* Download Pack button */
+    h += '<div style="margin-bottom:20px">';
+    h += '<button id="dlPackBtn" onclick="window.__amzDlPack()" style="background:#10b981;color:#fff;border:none;padding:12px 28px;border-radius:8px;cursor:pointer;font-size:15px;font-weight:700">\u2b07 Download Pack (' + imgs.length + ' images + CSV)</button>';
+    h += '</div>';
+
+    /* Individual image previews */
+    for (var i = 0; i < imgs.length; i++) {
+      var imgUrl = imgs[i];
+      h += '<div style="background:#1e293b;border-radius:12px;padding:16px;margin-bottom:12px">';
+      h += '<div style="font-size:14px;font-weight:700;color:#818cf8;margin-bottom:8px">Image ' + (i+1) + ' of ' + imgs.length + '</div>';
+      h += '<img src="' + imgUrl + '" style="max-width:100%;max-height:300px;border-radius:8px;display:block" />';
+      h += '</div>';
+    }
+  } else {
+    h += '<p style="color:#94a3b8">No images found</p>';
+  }
+
+  h += '</div>';
+  ov.innerHTML = h;
+  document.body.appendChild(ov);
+};
+
+var js = '(' + code.toString() + ')()';
+document.getElementById('bookmarklet-link').href = 'javascript:' + encodeURIComponent(js);
+</script>
+</body>
+</html>
